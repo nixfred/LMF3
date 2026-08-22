@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/lmf3-memory-hero.svg" alt="LMF3 persistent memory system carrying Claude Code sessions through extraction, structured storage, and hybrid recall into the next session" width="100%">
+</p>
+
 # LMF3 — Persistent Memory for Claude Code
 
 **LMF3** gives Claude Code persistent memory across sessions. Every conversation is automatically extracted, indexed, and searchable — so your AI assistant remembers what you've worked on together.
@@ -27,6 +31,24 @@ After installation, LMF3 runs silently in the background:
 3. **Database grows** — extracted sessions, decisions, learnings, and breadcrumbs accumulate in `~/.claude/memory.db` (SQLite with FTS5 indexes)
 4. **Next session** — Claude Code has MCP tools (`memory_search`, `memory_recall`, `context_for_agent`) to find relevant past context automatically
 5. **Over time** — your memory database grows, making Claude increasingly effective at your specific projects and patterns
+
+```mermaid
+flowchart LR
+    W[Work normally<br/>in Claude Code] --> E[Stop hook<br/>extracts session]
+    E --> M[Human-readable<br/>MEMORY files]
+    E --> D[(SQLite<br/>structured memory)]
+    D --> S[Keyword, semantic<br/>& hybrid search]
+    M --> R[Next-session<br/>hot recall]
+    S --> R
+    R --> W
+
+    classDef session fill:#111827,stroke:#60a5fa,color:#eff6ff
+    classDef memory fill:#1c1630,stroke:#a78bfa,color:#f7f2ff
+    classDef recall fill:#10251e,stroke:#34d399,color:#effff8
+    class W,E session
+    class M,D,S memory
+    class R recall
+```
 
 ---
 
@@ -127,6 +149,24 @@ The installer will:
 
 **After install:** Restart Claude Code to load the MCP server and hooks.
 
+```mermaid
+flowchart LR
+    I[install.sh] --> B[Back up existing<br/>Claude configuration]
+    B --> D[Install and build<br/>TypeScript CLI]
+    D --> L[Link mem<br/>and mem-mcp]
+    L --> S[Initialize private<br/>SQLite database]
+    S --> M[Register<br/>MCP server]
+    M --> H[Install and register<br/>extraction hooks]
+    H --> V[Restart Claude Code<br/>and verify]
+
+    classDef safe fill:#10251e,stroke:#34d399,color:#effff8
+    classDef install fill:#111827,stroke:#60a5fa,color:#eff6ff
+    classDef integrate fill:#1c1630,stroke:#a78bfa,color:#f7f2ff
+    class I,B safe
+    class D,L,S install
+    class M,H,V integrate
+```
+
 ### Session Extraction (Automatic)
 
 The installer automatically sets up session extraction:
@@ -189,6 +229,28 @@ crontab -e
 
 All FTS5-indexed tables have automatic sync triggers (INSERT/UPDATE/DELETE → FTS5 index stays consistent).
 
+```mermaid
+flowchart TB
+    J[Claude JSONL<br/>sessions] --> SE[sessions]
+    SE --> MSG[messages + FTS5]
+    C[Curated capture] --> LOA[LoA entries + FTS5]
+    C --> DEC[decisions + FTS5]
+    C --> LEA[learnings + FTS5]
+    C --> BR[breadcrumbs + FTS5]
+    X[Optional imports] --> TEL[telos + FTS5]
+    X --> DOC[documents + FTS5]
+    MSG --> EMB[optional 768-dim<br/>embeddings]
+    LOA --> EMB
+    DEC --> EMB
+
+    classDef input fill:#111827,stroke:#60a5fa,color:#eff6ff
+    classDef table fill:#1c1630,stroke:#a78bfa,color:#f7f2ff
+    classDef vector fill:#10251e,stroke:#34d399,color:#effff8
+    class J,C,X input
+    class SE,MSG,LOA,DEC,LEA,BR,TEL,DOC table
+    class EMB vector
+```
+
 ### Search Architecture
 
 LMF3 supports three search modes:
@@ -198,6 +260,25 @@ LMF3 supports three search modes:
 | **Keyword** | `mem search "query"` | `memory_search` | SQLite FTS5 full-text search. Supports AND, OR, NOT, prefix*, "exact phrases" |
 | **Semantic** | `mem semantic "query"` | — | Ollama embedding → cosine similarity against stored vectors |
 | **Hybrid** | `mem hybrid "query"` or `mem "query"` | `memory_hybrid_search` | Both keyword + semantic combined via Reciprocal Rank Fusion (k=60). Falls back to keyword-only if Ollama unavailable |
+
+```mermaid
+flowchart LR
+    Q[Natural-language<br/>query] --> F[FTS5 keyword<br/>ranking]
+    Q --> O[Ollama<br/>query embedding]
+    O --> V[Cosine similarity<br/>vector ranking]
+    F --> R[Reciprocal Rank<br/>Fusion · k=60]
+    V --> R
+    O -. unavailable .-> K[Keyword-only<br/>fallback]
+    K --> X[Ranked memory<br/>context]
+    R --> X
+
+    classDef query fill:#111827,stroke:#60a5fa,color:#eff6ff
+    classDef rank fill:#1c1630,stroke:#a78bfa,color:#f7f2ff
+    classDef output fill:#10251e,stroke:#34d399,color:#effff8
+    class Q query
+    class F,O,V,R,K rank
+    class X output
+```
 
 ### Extraction Pipeline
 
@@ -220,6 +301,27 @@ Session End → Stop Hook → SessionExtract.ts
 ```
 
 The hook self-spawns in background so the session exits immediately (non-blocking).
+
+```mermaid
+flowchart TB
+    S[Session ends] --> H[Stop hook<br/>self-spawns]
+    H --> J[Read JSONL and keep<br/>conversation text]
+    J --> C{Over 120K<br/>characters?}
+    C -->|yes| P[Chunk extraction<br/>then meta-extract]
+    C -->|no| E[Single extraction]
+    P --> Q[Quality gate]
+    E --> Q
+    Q -->|valid| W[Write archive, hot recall,<br/>indexes, decisions, rejections]
+    Q -->|invalid| T[Track failure<br/>for retry window]
+    W --> D[Mark source state<br/>to prevent duplicates]
+
+    classDef hook fill:#111827,stroke:#60a5fa,color:#eff6ff
+    classDef extract fill:#1c1630,stroke:#a78bfa,color:#f7f2ff
+    classDef safe fill:#10251e,stroke:#34d399,color:#effff8
+    class S,H,J hook
+    class C,P,E,Q extract
+    class W,T,D safe
+```
 
 ---
 
@@ -266,6 +368,24 @@ Get database statistics (record counts, database size).
 Show a full Library of Alexandria entry with its Fabric extract_wisdom content.
 ```
 loa_show({ id: 1 })
+```
+
+```mermaid
+flowchart LR
+    C[Claude Code] --> MCP[LMF MCP server]
+    MCP --> S[memory_search<br/>memory_hybrid_search]
+    MCP --> R[memory_recall<br/>loa_show]
+    MCP --> A[memory_add<br/>memory_stats]
+    MCP --> X[context_for_agent]
+    X --> H[Retrieve relevant<br/>project memory]
+    H --> P[Enriched agent<br/>prompt]
+
+    classDef client fill:#111827,stroke:#60a5fa,color:#eff6ff
+    classDef tool fill:#1c1630,stroke:#a78bfa,color:#f7f2ff
+    classDef agent fill:#10251e,stroke:#34d399,color:#effff8
+    class C,MCP client
+    class S,R,A,X tool
+    class H,P agent
 ```
 
 ---
