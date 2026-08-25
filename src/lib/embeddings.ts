@@ -86,10 +86,13 @@ export function embeddingToBlob(embedding: number[]): Buffer {
 /**
  * Convert SQLite BLOB back to embedding array
  */
-export function blobToEmbedding(blob: Buffer): number[] {
-  const embedding: number[] = [];
-  for (let i = 0; i < blob.length; i += 4) {
-    embedding.push(blob.readFloatLE(i));
+export function blobToEmbedding(blob: Buffer | Uint8Array): number[] {
+  // bun:sqlite returns BLOBs as Uint8Array (not Buffer) in Bun >= 1.2, so
+  // readFloatLE() is undefined there. DataView works for both.
+  const view = new DataView(blob.buffer, blob.byteOffset, blob.byteLength);
+  const embedding: number[] = new Array(blob.byteLength >> 2);
+  for (let i = 0; i < embedding.length; i++) {
+    embedding[i] = view.getFloat32(i * 4, true);
   }
   return embedding;
 }
